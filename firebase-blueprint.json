@@ -1,0 +1,446 @@
+{
+  "entities": {
+    "Facility": {
+      "title": "Facility",
+      "description": "Healthcare hospital, specialist clinic, or medical center in Nigeria registered on CornerBrief.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique facility identifier.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the user managing this facility record.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Official name of the healthcare facility.",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "location": {
+          "type": "string",
+          "description": "Address, city, and state location of the facility.",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "facilityType": {
+          "type": "string",
+          "enum": ["Hospital", "Specialist Clinic", "Medical Center", "Primary Care Clinic"],
+          "description": "Classification of the healthcare facility."
+        },
+        "facilityCode": {
+          "type": "string",
+          "description": "Facility short code identifier.",
+          "maxLength": 40
+        },
+        "state": {
+          "type": "string",
+          "description": "Nigerian state where the facility operates.",
+          "maxLength": 80
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pending", "Onboarding", "Active", "Rejected", "Suspended"],
+          "description": "Platform tenant status."
+        },
+        "departments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Configured clinical departments and service units."
+        },
+        "contactEmail": {
+          "type": "string",
+          "description": "Official administrative contact email.",
+          "maxLength": 160
+        },
+        "contactPhone": {
+          "type": "string",
+          "description": "Official administrative contact phone.",
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp."
+        }
+      },
+      "required": ["id", "ownerId", "name", "location", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Authorized healthcare professional or administrative user on CornerBrief.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "User UID matching Firebase Auth UID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Owner UID for strict access enforcement.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name and title of the user.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address.",
+          "maxLength": 160
+        },
+        "role": {
+          "type": "string",
+          "enum": ["Admin", "Clinician", "Staff", "PlatformAdmin", "FacilityAdmin", "Doctor", "Nurse", "HR", "RecordsStaff"],
+          "description": "Role-based authorization level."
+        },
+        "facilityId": {
+          "type": "string",
+          "description": "Associated healthcare facility ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "department": {
+          "type": "string",
+          "description": "Assigned clinical department or service unit.",
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp."
+        }
+      },
+      "required": ["id", "ownerId", "name", "email", "role", "facilityId", "createdAt"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "Synthetic patient record registered at the healthcare facility.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Document identifier.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the authorized workspace owner.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "patientId": {
+          "type": "string",
+          "description": "Internal human-readable Patient ID (e.g. CB-NG-1001).",
+          "minLength": 4,
+          "maxLength": 40
+        },
+        "facilityId": {
+          "type": "string",
+          "description": "Facility ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "firstName": {
+          "type": "string",
+          "description": "Patient first name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "lastName": {
+          "type": "string",
+          "description": "Patient last name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "dateOfBirth": {
+          "type": "string",
+          "description": "Date of birth in YYYY-MM-DD format.",
+          "maxLength": 20
+        },
+        "sex": {
+          "type": "string",
+          "enum": ["Female", "Male", "Other"],
+          "description": "Biological sex or gender marker."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number.",
+          "maxLength": 40
+        },
+        "email": {
+          "type": "string",
+          "description": "Patient email address.",
+          "maxLength": 160
+        },
+        "address": {
+          "type": "string",
+          "description": "Residential address.",
+          "maxLength": 300
+        },
+        "emergencyContact": {
+          "type": "string",
+          "description": "Emergency contact name, relationship, and phone.",
+          "maxLength": 200
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "Follow-Up", "Discharged"],
+          "description": "Current administrative care status."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Administrative or registration notes.",
+          "maxLength": 2000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Date registered."
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "patientId",
+        "facilityId",
+        "firstName",
+        "lastName",
+        "dateOfBirth",
+        "sex",
+        "phone",
+        "email",
+        "address",
+        "emergencyContact",
+        "status",
+        "notes",
+        "createdAt"
+      ]
+    },
+    "Encounter": {
+      "title": "Encounter",
+      "description": "Clinical encounter record including structured vital signs, original clinician notes, AI structured output, reviewed record, and signed clinical addenda.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique encounter ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the authorized workspace user.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "patientId": {
+          "type": "string",
+          "description": "Referenced Patient document ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "facilityId": {
+          "type": "string",
+          "description": "Referenced Facility ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "clinicianId": {
+          "type": "string",
+          "description": "Referenced Clinician User ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "clinicianName": {
+          "type": "string",
+          "description": "Name of attending clinician.",
+          "maxLength": 120
+        },
+        "department": {
+          "type": "string",
+          "description": "Clinical department or unit where encounter took place.",
+          "maxLength": 100
+        },
+        "encounterDate": {
+          "type": "string",
+          "description": "Date of clinical encounter.",
+          "maxLength": 40
+        },
+        "encounterType": {
+          "type": "string",
+          "description": "Category of clinical visit.",
+          "maxLength": 80
+        },
+        "reasonForVisit": {
+          "type": "string",
+          "description": "Chief complaint or reason for visit.",
+          "maxLength": 500
+        },
+        "vitalSigns": {
+          "type": "object",
+          "description": "Structured point-of-care vital signs and triage measurements."
+        },
+        "originalInput": {
+          "type": "object",
+          "description": "Preserved unstructured clinical input entered by the clinician."
+        },
+        "aiDocumentation": {
+          "type": "object",
+          "description": "Structured documentation generated by NONYE AI."
+        },
+        "reviewedDocumentation": {
+          "type": "object",
+          "description": "Clinician-reviewed and edited structured documentation."
+        },
+        "addenda": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Signed post-finalization clinical addenda appended to the locked record."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Draft", "AI Generated", "Pending Review", "Reviewed", "Finalized"],
+          "description": "Documentation lifecycle status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "patientId",
+        "facilityId",
+        "clinicianId",
+        "clinicianName",
+        "encounterDate",
+        "encounterType",
+        "reasonForVisit",
+        "originalInput",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable audit log entry tracking clinical and administrative actions across CornerBrief.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Audit log ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the authenticated user creating the log.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Actor user ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userName": {
+          "type": "string",
+          "description": "Actor display name.",
+          "maxLength": 120
+        },
+        "userRole": {
+          "type": "string",
+          "description": "Actor role at time of action.",
+          "maxLength": 40
+        },
+        "facilityId": {
+          "type": "string",
+          "description": "Facility ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "action": {
+          "type": "string",
+          "description": "Human-readable description of the audited event.",
+          "maxLength": 300
+        },
+        "patientId": {
+          "type": "string",
+          "description": "Affected patient ID or empty string.",
+          "maxLength": 128
+        },
+        "encounterId": {
+          "type": "string",
+          "description": "Affected encounter ID or empty string.",
+          "maxLength": 128
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the event."
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "userId",
+        "userName",
+        "userRole",
+        "facilityId",
+        "action",
+        "patientId",
+        "encounterId",
+        "timestamp"
+      ]
+    }
+  },
+  "firestore": {
+    "/facilities/{facilityId}": {
+      "schema": { "$ref": "#/entities/Facility" },
+      "description": "Stores healthcare facility configurations."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores authenticated user profiles and active RBAC roles."
+    },
+    "/patients/{patientDocId}": {
+      "schema": { "$ref": "#/entities/Patient" },
+      "description": "Stores synthetic patient demographic and registration records."
+    },
+    "/encounters/{encounterId}": {
+      "schema": { "$ref": "#/entities/Encounter" },
+      "description": "Stores clinical encounters, vital signs, original clinician inputs, NONYE AI outputs, finalized records, and signed clinical addenda."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Stores immutable audit trail records for clinical governance."
+    }
+  }
+}

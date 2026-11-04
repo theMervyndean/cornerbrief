@@ -1,0 +1,263 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default-Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'mervyndeanhilary@gmail.com' && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // Validation Blueprint: Facility
+    function isValidFacility(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'location', 'createdAt']) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'name', 'location', 'facilityType', 'facilityCode',
+          'state', 'status', 'departments', 'contactEmail', 'contactPhone', 'createdAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 160 &&
+        data.location is string && data.location.size() >= 2 && data.location.size() <= 200 &&
+        (!('facilityType' in data) || (data.facilityType is string && data.facilityType.size() <= 60)) &&
+        (!('facilityCode' in data) || (data.facilityCode is string && data.facilityCode.size() <= 40)) &&
+        (!('state' in data) || (data.state is string && data.state.size() <= 80)) &&
+        (!('status' in data) || (data.status is string && data.status.size() <= 30 && (data.status in ['Active', 'Onboarding', 'Suspended']))) &&
+        (!('departments' in data) || (data.departments is list && data.departments.size() <= 30)) &&
+        (!('contactEmail' in data) || (data.contactEmail is string && data.contactEmail.size() <= 160)) &&
+        (!('contactPhone' in data) || (data.contactPhone is string && data.contactPhone.size() <= 40)) &&
+        data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 64;
+    }
+
+    // Validation Blueprint: User
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'email', 'role', 'facilityId', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'ownerId', 'name', 'email', 'role', 'facilityId', 'department', 'createdAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.role is string && data.role.size() <= 20 && (data.role in ['Admin', 'Clinician', 'Staff']) &&
+        isValidId(data.facilityId) &&
+        (!('department' in data) || (data.department is string && data.department.size() <= 100)) &&
+        data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 64;
+    }
+
+    // Validation Blueprint: Patient
+    function isValidPatient(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'patientId', 'facilityId', 'firstName', 'lastName',
+          'dateOfBirth', 'sex', 'phone', 'email', 'address', 'emergencyContact',
+          'status', 'notes', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'patientId', 'facilityId', 'firstName', 'lastName',
+          'dateOfBirth', 'sex', 'phone', 'email', 'address', 'emergencyContact',
+          'status', 'notes', 'createdAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.patientId is string && data.patientId.size() >= 4 && data.patientId.size() <= 40 &&
+        isValidId(data.facilityId) &&
+        data.firstName is string && data.firstName.size() >= 1 && data.firstName.size() <= 80 &&
+        data.lastName is string && data.lastName.size() >= 1 && data.lastName.size() <= 80 &&
+        data.dateOfBirth is string && data.dateOfBirth.size() >= 4 && data.dateOfBirth.size() <= 20 &&
+        data.sex is string && data.sex.size() <= 20 && (data.sex in ['Female', 'Male', 'Other']) &&
+        data.phone is string && data.phone.size() <= 40 &&
+        data.email is string && data.email.size() <= 160 &&
+        data.address is string && data.address.size() <= 300 &&
+        data.emergencyContact is string && data.emergencyContact.size() <= 200 &&
+        data.status is string && data.status.size() <= 20 && (data.status in ['Active', 'Follow-Up', 'Discharged']) &&
+        data.notes is string && data.notes.size() <= 2000 &&
+        data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 64;
+    }
+
+    // Validation Blueprint: Encounter
+    function isValidEncounter(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'patientId', 'facilityId', 'clinicianId', 'clinicianName',
+          'encounterDate', 'encounterType', 'reasonForVisit', 'originalInput',
+          'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'patientId', 'facilityId', 'clinicianId', 'clinicianName',
+          'department', 'encounterDate', 'encounterType', 'reasonForVisit', 'vitalSigns',
+          'originalInput', 'aiDocumentation', 'reviewedDocumentation', 'reviewedBy',
+          'reviewedAt', 'addenda', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        isValidId(data.patientId) &&
+        isValidId(data.facilityId) &&
+        isValidId(data.clinicianId) &&
+        data.clinicianName is string && data.clinicianName.size() >= 1 && data.clinicianName.size() <= 120 &&
+        (!('department' in data) || (data.department is string && data.department.size() <= 100)) &&
+        data.encounterDate is string && data.encounterDate.size() >= 4 && data.encounterDate.size() <= 40 &&
+        data.encounterType is string && data.encounterType.size() >= 2 && data.encounterType.size() <= 80 &&
+        data.reasonForVisit is string && data.reasonForVisit.size() <= 500 &&
+        (!('vitalSigns' in data) || data.vitalSigns == null || data.vitalSigns is map) &&
+        data.originalInput is map &&
+        (!('aiDocumentation' in data) || data.aiDocumentation == null || data.aiDocumentation is map) &&
+        (!('reviewedDocumentation' in data) || data.reviewedDocumentation == null || data.reviewedDocumentation is map) &&
+        (!('reviewedBy' in data) || (data.reviewedBy is string && data.reviewedBy.size() <= 120)) &&
+        (!('reviewedAt' in data) || (data.reviewedAt is string && data.reviewedAt.size() <= 64)) &&
+        (!('addenda' in data) || (data.addenda is list && data.addenda.size() <= 50)) &&
+        data.status is string && data.status.size() <= 30 &&
+        (data.status in ['Draft', 'AI Generated', 'Pending Review', 'Reviewed', 'Finalized']) &&
+        data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 64 &&
+        data.updatedAt is string && data.updatedAt.size() >= 10 && data.updatedAt.size() <= 64;
+    }
+
+    // Validation Blueprint: AuditLog
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'userId', 'userName', 'userRole', 'facilityId',
+          'action', 'patientId', 'encounterId', 'timestamp'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'userId', 'userName', 'userRole', 'facilityId',
+          'action', 'patientId', 'encounterId', 'timestamp'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        isValidId(data.userId) &&
+        data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 120 &&
+        data.userRole is string && data.userRole.size() <= 40 &&
+        isValidId(data.facilityId) &&
+        data.action is string && data.action.size() >= 2 && data.action.size() <= 300 &&
+        data.patientId is string && data.patientId.size() <= 128 &&
+        data.encounterId is string && data.encounterId.size() <= 128 &&
+        data.timestamp is string && data.timestamp.size() >= 10 && data.timestamp.size() <= 64;
+    }
+
+    // Admin Role Management Collection
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isBootstrappedAdmin() && isValidId(adminId);
+      allow delete: if isBootstrappedAdmin() && adminId != request.auth.uid;
+    }
+
+    // Facilities Collection
+    match /facilities/{facilityId} {
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+        isValidId(facilityId) &&
+        incoming().id == facilityId &&
+        isValidFacility(incoming());
+      allow update: if isSignedIn() &&
+        isValidId(facilityId) &&
+        (existing().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().id == existing().id &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        isValidFacility(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+        isValidId(userId) &&
+        incoming().id == userId &&
+        isValidUser(incoming());
+      allow update: if isSignedIn() &&
+        isValidId(userId) &&
+        (existing().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().id == existing().id &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        isValidUser(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Patients Collection
+    match /patients/{patientDocId} {
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+        isValidId(patientDocId) &&
+        incoming().id == patientDocId &&
+        isValidPatient(incoming());
+      allow update: if isSignedIn() &&
+        isValidId(patientDocId) &&
+        (existing().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().id == existing().id &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().patientId == existing().patientId &&
+        incoming().createdAt == existing().createdAt &&
+        isValidPatient(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Encounters Collection (Finalized records protected against overwriting; only signed addenda allowed after lock)
+    match /encounters/{encounterId} {
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+        isValidId(encounterId) &&
+        incoming().id == encounterId &&
+        isValidEncounter(incoming());
+      allow update: if isSignedIn() &&
+        isValidId(encounterId) &&
+        (existing().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().id == existing().id &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().patientId == existing().patientId &&
+        incoming().createdAt == existing().createdAt &&
+        isValidEncounter(incoming()) &&
+        (
+          existing().status != 'Finalized' ||
+          (
+            incoming().status == 'Finalized' &&
+            incoming().originalInput == existing().originalInput &&
+            incoming().reviewedDocumentation == existing().reviewedDocumentation
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    // Audit Logs Collection (Immutable Append-Only)
+    match /auditLogs/{logId} {
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+        isValidId(logId) &&
+        incoming().id == logId &&
+        isValidAuditLog(incoming());
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,429 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --cb-navy: #0B1F33;
+    --cb-blue: #1769E0;
+    --cb-teal: #0E9F9A;
+    --cb-bg: #F6F9FC;
+    --cb-white: #FFFFFF;
+    --cb-text: #17212B;
+    --cb-muted: #64748B;
+    --cb-success: #16A34A;
+    --cb-warning: #D97706;
+    --cb-error: #DC2626;
+    --cb-border: #E2E8F0;
+    --cb-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #F6F9FC;
+    color: #17212B;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  }
+
+  .font-mono, .tabular-nums {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Global CornerBrief SaaS Interaction System */
+.cb-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition-property: transform, box-shadow, background-color, border-color, color, opacity;
+  transition-duration: 200ms;
+  transition-timing-function: var(--cb-ease);
+  cursor: pointer;
+  user-select: none;
+}
+
+.cb-btn:hover:not(:disabled) {
+  transform: translateY(-1.5px) scale(1.01);
+}
+
+.cb-btn:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.97);
+  transition-duration: 80ms;
+}
+
+.cb-btn:focus-visible {
+  outline: 2px solid #1769E0;
+  outline-offset: 2px;
+}
+
+.cb-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Button Shimmer / Sheen Sweep on Hover */
+.cb-btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.cb-btn-shine::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.28),
+    transparent
+  );
+  transform: skewX(-20deg);
+  pointer-events: none;
+}
+
+.cb-btn-shine:hover::after {
+  left: 220%;
+  transition: left 650ms ease-in-out;
+}
+
+.cb-btn-primary {
+  background-color: #1769E0;
+  color: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(11, 31, 51, 0.12), 0 1px 2px rgba(23, 105, 224, 0.1);
+}
+
+.cb-btn-primary:hover:not(:disabled) {
+  background-color: #1358BD;
+  box-shadow: 0 6px 16px rgba(23, 105, 224, 0.32), 0 2px 4px rgba(11, 31, 51, 0.08);
+}
+
+.cb-btn-primary:active:not(:disabled) {
+  background-color: #0F4AA3;
+  box-shadow: 0 1px 3px rgba(23, 105, 224, 0.18);
+}
+
+.cb-btn-teal {
+  background-color: #0E9F9A;
+  color: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(11, 31, 51, 0.12);
+}
+
+.cb-btn-teal:hover:not(:disabled) {
+  background-color: #0B8480;
+  box-shadow: 0 6px 16px rgba(14, 159, 154, 0.32);
+}
+
+.cb-btn-teal:active:not(:disabled) {
+  background-color: #096E6B;
+  box-shadow: 0 1px 3px rgba(14, 159, 154, 0.18);
+}
+
+.cb-btn-secondary {
+  background-color: #F6F9FC;
+  color: #0B1F33;
+  border: 1px solid #E2E8F0;
+}
+
+.cb-btn-secondary:hover:not(:disabled) {
+  background-color: #FFFFFF;
+  border-color: #CBD5E1;
+  box-shadow: 0 4px 12px rgba(11, 31, 51, 0.08);
+}
+
+.cb-btn-secondary:active:not(:disabled) {
+  background-color: #F1F5F9;
+  box-shadow: none;
+}
+
+/* Interactive Icon Button */
+.cb-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 180ms var(--cb-ease), background-color 180ms var(--cb-ease), color 180ms var(--cb-ease), box-shadow 180ms var(--cb-ease);
+  cursor: pointer;
+}
+
+.cb-icon-btn:hover:not(:disabled) {
+  transform: translateY(-1.5px) scale(1.05);
+}
+
+.cb-icon-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.92);
+  transition-duration: 80ms;
+}
+
+.cb-icon-btn:focus-visible {
+  outline: 2px solid #1769E0;
+  outline-offset: 2px;
+}
+
+/* Clinical Image Animation Container */
+.cb-image-frame {
+  position: relative;
+  overflow: hidden;
+  transition: transform 400ms var(--cb-ease), box-shadow 400ms var(--cb-ease), border-color 400ms var(--cb-ease);
+}
+
+.cb-image-frame img {
+  transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1), filter 500ms ease;
+  will-change: transform;
+}
+
+.cb-image-frame:hover img {
+  transform: scale(1.035);
+}
+
+.cb-image-frame::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -120%;
+  width: 50%;
+  height: 200%;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(25deg);
+  pointer-events: none;
+}
+
+.cb-image-frame:hover::after {
+  left: 220%;
+  transition: left 950ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Floating Overlay Badges over clinical media */
+@keyframes cbFloatSlow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.cb-float-badge {
+  animation: cbFloatSlow 4s ease-in-out infinite;
+}
+
+.cb-float-badge-delayed {
+  animation: cbFloatSlow 4.5s ease-in-out infinite;
+  animation-delay: 2s;
+}
+
+/* Interactive Cards vs Static Cards */
+.cb-card-interactive {
+  transition: transform 200ms var(--cb-ease), box-shadow 200ms var(--cb-ease), border-color 200ms var(--cb-ease), background-color 200ms var(--cb-ease);
+  cursor: pointer;
+}
+
+.cb-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px -4px rgba(11, 31, 51, 0.08), 0 2px 6px -1px rgba(11, 31, 51, 0.04);
+  border-color: rgba(23, 105, 224, 0.45);
+}
+
+.cb-card-interactive:active {
+  transform: translateY(0px) scale(0.996);
+  transition-duration: 100ms;
+}
+
+.cb-card-interactive:focus-visible {
+  outline: 2px solid #1769E0;
+  outline-offset: 2px;
+}
+
+/* Form Input System */
+.cb-input {
+  background-color: #FAFBFD;
+  border: 1px solid #E2E8F0;
+  color: #17212B;
+  transition: border-color 180ms var(--cb-ease), background-color 180ms var(--cb-ease), box-shadow 180ms var(--cb-ease);
+}
+
+.cb-input:hover:not(:disabled):not(:focus) {
+  border-color: #CBD5E1;
+  background-color: #FFFFFF;
+}
+
+.cb-input:focus {
+  outline: none;
+  background-color: #FFFFFF;
+  border-color: #1769E0;
+  box-shadow: 0 0 0 3px rgba(23, 105, 224, 0.14);
+}
+
+.cb-input-valid {
+  border-color: rgba(22, 163, 74, 0.45);
+  background-color: #FFFFFF;
+}
+
+.cb-input-error {
+  border-color: #DC2626 !important;
+  background-color: rgba(220, 38, 38, 0.02);
+}
+
+.cb-input-error:focus {
+  border-color: #DC2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.16) !important;
+}
+
+/* Smooth Animated Links (No abrupt underline jumps) */
+.cb-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: #1769E0;
+  transition: color 180ms var(--cb-ease), opacity 180ms var(--cb-ease);
+  cursor: pointer;
+}
+
+.cb-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1.5px;
+  background-color: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 200ms var(--cb-ease);
+}
+
+.cb-link:hover {
+  color: #1358BD;
+}
+
+.cb-link:hover::after {
+  transform: scaleX(1);
+}
+
+.cb-link:focus-visible {
+  outline: 2px solid #1769E0;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Interactive Table Rows */
+.cb-table-row {
+  transition: background-color 160ms var(--cb-ease);
+  cursor: pointer;
+}
+
+.cb-table-row:hover {
+  background-color: #F0F6FF;
+}
+
+.cb-table-row:active {
+  background-color: #E5EFFF;
+}
+
+/* Subtle Clinician Review Required Emphasis (Calm breathing highlight, never flashy) */
+@keyframes cbReviewPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.22);
+    border-color: rgba(217, 119, 6, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.10);
+    border-color: rgba(217, 119, 6, 0.85);
+  }
+}
+
+.cb-review-required-badge {
+  animation: cbReviewPulse 2.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Subtle NONYE AI Processing Progress Bar */
+@keyframes cbAiProgress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.cb-ai-progress-bar {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(14, 159, 154, 0.14);
+}
+
+.cb-ai-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(14, 159, 154, 0.75),
+    transparent
+  );
+  animation: cbAiProgress 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Calm Skeleton Loader Shimmer */
+@keyframes cbSkeletonPulse {
+  0%, 100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.cb-skeleton {
+  background-color: #E2E8F0;
+  animation: cbSkeletonPulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .cb-btn,
+  .cb-icon-btn,
+  .cb-card-interactive,
+  .cb-input,
+  .cb-link,
+  .cb-link::after,
+  .cb-table-row,
+  .cb-review-required-badge,
+  .cb-ai-progress-bar::after,
+  .cb-btn-shine::after,
+  .cb-image-frame,
+  .cb-image-frame img,
+  .cb-image-frame::after,
+  .cb-float-badge,
+  .cb-float-badge-delayed,
+  .cb-skeleton {
+    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transform: none !important;
+  }
+}

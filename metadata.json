@@ -1,0 +1,6 @@
+{
+  "name": "CornerBrief",
+  "description": "Healthcare records. Documentation. Operations. Connected. CornerBrief helps hospitals and clinics manage patient information, clinical encounters, documentation, and everyday healthcare workflows from one secure digital workspace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

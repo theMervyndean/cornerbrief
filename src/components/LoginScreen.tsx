@@ -1251,8 +1251,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <p className="text-center md:text-left text-[11px] text-[#64748B] max-w-2xl">
               <strong>Clinical Notice:</strong> CornerBrief is a healthcare information and workflow platform. NONYE AI is a documentation assistant and does not formulate autonomous diagnoses or replace licensed clinical judgment.
             </p>
-            <div className="font-mono text-[11px] shrink-0">
-              &copy; 2026 CornerBrief. International Healthcare Platform.
+            <div className="font-mono text-[11px] shrink-0 flex items-center gap-3">
+              <span>&copy; 2026 CornerBrief. International Healthcare Platform.</span>
+              <span className="text-slate-300">·</span>
+              <a
+                href="/platform-admin"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.history.pushState({}, '', '/platform-admin');
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }}
+                className="hover:text-[#1769E0] transition-colors text-[#94A3B8]"
+              >
+                Platform Admin
+              </a>
             </div>
           </div>
         </div>

@@ -58,6 +58,12 @@ export interface Facility {
   adminEmail?: string;
   adminRoleTitle?: string;
   createdAt: string;
+  address?: string;
+  city?: string;
+  activatedAt?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  reviewNotes?: string;
 }
 
 export interface UserProfile {
@@ -208,4 +214,30 @@ export interface PatientAssignment {
   status: 'Active' | 'Revoked';
   createdAt: string;
   updatedAt?: string;
+}
+
+export type NotificationEventType =
+  | 'FACILITY_REGISTERED_ADMIN'
+  | 'FACILITY_REGISTERED_CONFIRMATION'
+  | 'FACILITY_APPROVED'
+  | 'FACILITY_REJECTED';
+
+export type NotificationChannel = 'WHATSAPP' | 'GMAIL';
+
+export type NotificationDeliveryStatus = 'SENT' | 'FAILED' | 'PENDING' | 'CONFIG_MISSING';
+
+export interface NotificationRecord {
+  id: string;
+  eventType: NotificationEventType;
+  channel: NotificationChannel;
+  recipient: string;
+  facilityId: string;
+  facilityCode?: string;
+  status: NotificationDeliveryStatus;
+  provider?: string;
+  providerMessageId?: string;
+  error?: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  deliveredAt?: string;
 }

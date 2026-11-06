@@ -419,6 +419,63 @@
         "encounterId",
         "timestamp"
       ]
+    },
+    "NotificationRecord": {
+      "title": "NotificationRecord",
+      "description": "Delivery record and audit for WhatsApp and Gmail notifications dispatched to hospitals and platform administrators.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique notification delivery ID.",
+          "maxLength": 128
+        },
+        "eventType": {
+          "type": "string",
+          "enum": ["FACILITY_REGISTERED_ADMIN", "FACILITY_REGISTERED_CONFIRMATION", "FACILITY_APPROVED", "FACILITY_REJECTED"],
+          "description": "Lifecycle event category."
+        },
+        "channel": {
+          "type": "string",
+          "enum": ["WHATSAPP", "GMAIL"],
+          "description": "Communication channel."
+        },
+        "recipient": {
+          "type": "string",
+          "description": "Phone number or email address of recipient."
+        },
+        "facilityId": {
+          "type": "string",
+          "description": "Associated facility ID."
+        },
+        "facilityCode": {
+          "type": "string",
+          "description": "Associated Hospital Code."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["SENT", "FAILED", "PENDING", "CONFIG_MISSING"],
+          "description": "Delivery status from the provider."
+        },
+        "provider": {
+          "type": "string",
+          "description": "Underlying messaging service provider (e.g. meta, twilio, nodemailer-gmail)."
+        },
+        "providerMessageId": {
+          "type": "string",
+          "description": "External message reference ID from provider."
+        },
+        "error": {
+          "type": "string",
+          "description": "Detailed error message if delivery failed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Dispatch timestamp."
+        }
+      },
+      "required": ["id", "eventType", "channel", "recipient", "facilityId", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -441,6 +498,10 @@
     "/auditLogs/{logId}": {
       "schema": { "$ref": "#/entities/AuditLog" },
       "description": "Stores immutable audit trail records for clinical governance."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationRecord" },
+      "description": "Stores WhatsApp and Gmail notification delivery logs and status."
     }
   }
 }

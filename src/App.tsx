@@ -81,8 +81,22 @@ import { SettingsView } from './components/SettingsView';
 import { Tooltip } from './components/Tooltip';
 import { WorkspaceBootSkeleton } from './components/SkeletonLoader';
 import { CornerBriefLogo } from './components/CornerBriefLogo';
+import { PlatformAdminPortal } from './components/platform-admin/PlatformAdminPortal';
 
 export default function App() {
+  const [pathname, setPathname] = useState<string>(() => window.location.pathname);
+
+  useEffect(() => {
+    const handlePopState = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Dedicated Private Platform Administration Route Handling
+  if (pathname.startsWith('/platform-admin')) {
+    return <PlatformAdminPortal />;
+  }
+
   // Authentication & Session State
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isSandboxMode, setIsSandboxMode] = useState<boolean>(false);

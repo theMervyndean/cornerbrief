@@ -339,5 +339,13 @@ service cloud.firestore {
         isValidAuditLog(incoming());
       allow update, delete: if false;
     }
+
+    // Notifications Collection (Platform Notifications & Delivery Audits)
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && isAdmin();
+      allow list: if isSignedIn() && isAdmin();
+      allow create, update: if isSignedIn() && isAdmin();
+      allow delete: if false;
+    }
   }
 }

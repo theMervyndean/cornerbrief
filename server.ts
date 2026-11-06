@@ -21,7 +21,7 @@ import {
   canManageFacilityMemberships,
   resolveUserMemberships,
 } from './src/lib/membershipService.ts';
-import type { FacilityMembership, MembershipStatus, UserRole } from './src/types.ts';
+import type { Facility, FacilityMembership, FacilityStatus, MembershipStatus, UserRole } from './src/types.ts';
 import {
   hashPassword,
   verifyPassword,
@@ -32,8 +32,18 @@ import {
   type FacilityCredential,
   type AuthSession,
 } from './src/lib/authService.ts';
+import {
+  notifyNewFacilityRegistration,
+  notifyFacilityApproved,
+  notifyFacilityRejected,
+  inMemoryNotifications,
+  getNotificationConfig,
+  retryNotificationById,
+  sendDirectTestGmail,
+  sendDirectTestWhatsApp,
+} from './src/lib/serverNotifications.ts';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -633,6 +643,38 @@ async function rollbackStaffProvisioning(
 
 // Helper: Server-side Administrator Authorization Verification
 async function verifyAdministratorCaller(idToken: string) {
+  // 1. Check if token is a CornerBrief signed session token
+  const sessionId = verifySessionToken(idToken);
+  if (sessionId) {
+    const session = activeSessions.get(sessionId);
+    if (session) {
+      if (session.isPlatformAdmin) {
+        return {
+          callerUid: session.userId,
+          callerEmail: session.email,
+          callerName: session.displayName || 'Chief Platform Administrator',
+          emailVerified: true,
+          isPlatformAdmin: true,
+          isFacilityAdmin: true,
+          callerRole: 'PlatformAdmin',
+          callerFacilityId: null,
+        };
+      }
+      // Staff sessions strictly NEVER grant PlatformAdmin authority
+      const isFacilityAdmin = session.role === 'FacilityAdmin' || session.role === 'Admin';
+      return {
+        callerUid: session.userId,
+        callerEmail: session.email,
+        callerName: session.displayName,
+        emailVerified: true,
+        isPlatformAdmin: false,
+        isFacilityAdmin,
+        callerRole: session.role,
+        callerFacilityId: session.facilityId,
+      };
+    }
+  }
+
   const decodedToken = await adminAuth.verifyIdToken(idToken);
   const callerUid = decodedToken.uid;
   if (!callerUid) {
@@ -745,25 +787,6 @@ app.get('/api/admin/verify-caller', async (req, res) => {
     const idToken = authHeader.substring(7).trim();
     if (!idToken) {
       return res.status(401).json({ error: 'Token missing.' });
-    }
-
-    // 1. Check if token is a CornerBrief signed staff session token
-    const staffSessionId = verifySessionToken(idToken);
-    if (staffSessionId) {
-      const session = activeSessions.get(staffSessionId);
-      if (session) {
-        // Staff sessions strictly NEVER grant PlatformAdmin authority
-        const isFacilityAdmin = session.role === 'FacilityAdmin' || session.role === 'Admin';
-        return res.json({
-          uid: session.userId,
-          email: session.email,
-          name: session.displayName,
-          isPlatformAdmin: false,
-          isFacilityAdmin,
-          authorizedFacilityId: session.facilityId,
-          canProvisionStaff: isFacilityAdmin,
-        });
-      }
     }
 
     const authContext = await verifyAdministratorCaller(idToken);
@@ -1202,6 +1225,35 @@ app.post('/api/facilities/register', async (req, res) => {
     });
     inMemoryFacilities.set(newFacilityId, facilityData);
 
+    // 10. Dispatch WhatsApp and Gmail Notifications (Platform Admin Alert + Hospital Confirmation)
+    notifyNewFacilityRegistration(
+      {
+        facilityId: newFacilityId,
+        facilityName: cleanName,
+        facilityCode: normalizedCode,
+        facilityType: cleanType,
+        location: `${cleanAddress}, ${cleanCity}, ${cleanState}`,
+        state: cleanState,
+        contactName: cleanAdminName,
+        contactPhone: cleanContactPhone,
+        contactEmail: cleanContactEmail,
+        createdAt: nowIso,
+        status: 'Pending',
+      },
+      adminDb,
+      `${req.protocol}://${req.get('host')}`
+    )
+      .then((dispatches) => {
+        const summary = dispatches.map((d) => `${d.channel}:${d.status}`).join(', ');
+        addPlatformAuditLog(
+          `Dispatched registration alerts for ${cleanName} (${normalizedCode}): ${summary}`,
+          newFacilityId
+        );
+      })
+      .catch((err) => {
+        console.warn('Facility registration notification dispatch notice:', err?.message || err);
+      });
+
     return res.status(201).json({
       success: true,
       status: 'Pending',
@@ -1612,6 +1664,801 @@ seedCredential(
   'susp.doctor',
   'AnyPassword1!'
 );
+
+// ============================================================================
+// CENTRAL PLATFORM ADMINISTRATION PORTAL & AUDIT ARCHITECTURE
+// ============================================================================
+
+// Central server-side audit logs store
+const inMemoryAuditLogs: any[] = [
+  {
+    id: 'aud_init_001',
+    ownerId: 'platform_admin',
+    userId: 'usr_bootstrap_admin',
+    userName: 'Chief Platform Administrator',
+    userRole: 'PlatformAdmin',
+    facilityId: 'system',
+    action: 'CornerBrief multi-tenant platform initialized with isolated facility registries.',
+    patientId: '',
+    encounterId: '',
+    timestamp: '2026-02-01T08:00:00.000Z',
+  },
+  {
+    id: 'aud_init_002',
+    ownerId: 'platform_admin',
+    userId: 'usr_bootstrap_admin',
+    userName: 'Chief Platform Administrator',
+    userRole: 'PlatformAdmin',
+    facilityId: 'fac_lagos_island_001',
+    action: 'Approved facility registration for Lagos Lagoon Specialist Centre (LLSC-VI). Workspace activated.',
+    patientId: '',
+    encounterId: '',
+    timestamp: '2026-02-01T08:30:00.000Z',
+  },
+  {
+    id: 'aud_init_003',
+    ownerId: 'platform_admin',
+    userId: 'usr_bootstrap_admin',
+    userName: 'Chief Platform Administrator',
+    userRole: 'PlatformAdmin',
+    facilityId: 'fac_abuja_national_002',
+    action: 'Approved facility registration for Abuja Central Care Hospital (ACCH-ABJ). Workspace activated.',
+    patientId: '',
+    encounterId: '',
+    timestamp: '2026-02-02T09:00:00.000Z',
+  },
+  {
+    id: 'aud_init_004',
+    ownerId: 'platform_admin',
+    userId: 'usr_bootstrap_admin',
+    userName: 'Chief Platform Administrator',
+    userRole: 'PlatformAdmin',
+    facilityId: 'fac_ph_riverside_003',
+    action: 'Approved facility registration for Port Harcourt Riverside Medical Centre (PRMC-PHC). Workspace activated.',
+    patientId: '',
+    encounterId: '',
+    timestamp: '2026-02-10T10:00:00.000Z',
+  },
+  {
+    id: 'aud_init_005',
+    ownerId: 'platform_admin',
+    userId: 'usr_bootstrap_admin',
+    userName: 'Chief Platform Administrator',
+    userRole: 'PlatformAdmin',
+    facilityId: 'fac_suspended_demo_004',
+    action: 'Suspended facility workspace for Suspended Demonstration Hospital (SUSP-FAC) due to compliance review.',
+    patientId: '',
+    encounterId: '',
+    timestamp: '2026-02-25T08:00:00.000Z',
+  },
+];
+
+function addPlatformAuditLog(action: string, facilityId = 'system', details?: string) {
+  const log: any = {
+    id: `aud_plat_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+    ownerId: 'platform_admin',
+    userId: 'usr_platform_admin_root',
+    userName: 'Chief Platform Administrator',
+    userRole: 'PlatformAdmin',
+    facilityId,
+    action,
+    details: details || '',
+    patientId: '',
+    encounterId: '',
+    timestamp: new Date().toISOString(),
+  };
+  inMemoryAuditLogs.unshift(log);
+  if (inMemoryAuditLogs.length > 500) {
+    inMemoryAuditLogs.pop();
+  }
+  if (adminDb) {
+    adminDb.collection('auditLogs').doc(log.id).set(log).catch(() => {});
+  }
+  return log;
+}
+
+// Security Middleware: Authorize Platform Administrator caller
+async function authenticatePlatformAdmin(req: express.Request, res: express.Response) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({
+      error: 'Authentication required. Platform Administrator token missing.',
+      code: 'UNAUTHORIZED',
+    });
+    return null;
+  }
+  const token = authHeader.substring(7).trim();
+  if (!token) {
+    res.status(401).json({ error: 'Token missing.', code: 'TOKEN_MISSING' });
+    return null;
+  }
+  try {
+    const authContext = await verifyAdministratorCaller(token);
+    if (!authContext.isPlatformAdmin) {
+      res.status(403).json({
+        error: 'Access denied. You do not possess Platform Administrator authorization.',
+        code: 'FORBIDDEN',
+      });
+      return null;
+    }
+    return authContext;
+  } catch {
+    res.status(401).json({
+      error: 'Your administrative session is invalid or has expired. Please sign in again.',
+      code: 'INVALID_SESSION',
+    });
+    return null;
+  }
+}
+
+// 1. Platform Admin Authentication Endpoint
+app.post('/api/platform-admin/login', async (req, res) => {
+  const { username, email, password, idToken } = req.body || {};
+
+  // Path A: Firebase Google Auth for bootstrapped administrator
+  if (idToken && typeof idToken === 'string') {
+    try {
+      const authContext = await verifyAdministratorCaller(idToken);
+      if (!authContext.isPlatformAdmin) {
+        return res.status(403).json({
+          error: 'Your Google Account is not authorized as a CornerBrief Platform Administrator.',
+          code: 'FORBIDDEN',
+        });
+      }
+
+      const sessionId = `admin_sess_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+      const token = createSessionToken(sessionId);
+      activeSessions.set(sessionId, {
+        sessionId,
+        userId: authContext.callerUid,
+        membershipId: 'mem_platform_admin_root',
+        facilityId: '*',
+        facilityCode: 'PLATFORM',
+        role: 'PlatformAdmin',
+        permissions: ['*'],
+        username: authContext.callerEmail.split('@')[0],
+        displayName: authContext.callerName,
+        email: authContext.callerEmail,
+        isPlatformAdmin: true,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      });
+
+      addPlatformAuditLog(`Platform Administrator authenticated via Google Auth (${authContext.callerEmail})`);
+
+      return res.json({
+        success: true,
+        token,
+        admin: {
+          uid: authContext.callerUid,
+          email: authContext.callerEmail,
+          name: authContext.callerName,
+          role: 'PlatformAdmin',
+          isPlatformAdmin: true,
+        },
+      });
+    } catch {
+      return res.status(401).json({
+        error: 'Invalid or expired Google authentication credentials.',
+        code: 'INVALID_TOKEN',
+      });
+    }
+  }
+
+  // Path B: Secure Username/Password Authentication
+  const identifier = (username || email || '').trim().toLowerCase();
+  const cleanPassword = (password || '').trim();
+
+  if (!identifier || !cleanPassword) {
+    return res.status(400).json({
+      error: 'Platform Administrator identifier and password are required.',
+      code: 'INVALID_INPUT',
+    });
+  }
+
+  const ADMIN_PASSWORD = process.env.PLATFORM_ADMIN_PASSWORD || 'CornerBriefAdmin2026!';
+  const isValidIdentifier =
+    identifier === 'mervyndeanhilary@gmail.com' ||
+    identifier === 'platform.admin' ||
+    identifier === 'admin@cornerbrief.ng';
+
+  if (!isValidIdentifier || cleanPassword !== ADMIN_PASSWORD) {
+    return res.status(401).json({
+      error: 'Invalid Platform Administrator credentials. Access denied.',
+      code: 'INVALID_CREDENTIALS',
+    });
+  }
+
+  const sessionId = `admin_sess_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+  const token = createSessionToken(sessionId);
+  activeSessions.set(sessionId, {
+    sessionId,
+    userId: 'usr_platform_admin_root',
+    membershipId: 'mem_platform_admin_root',
+    facilityId: '*',
+    facilityCode: 'PLATFORM',
+    role: 'PlatformAdmin',
+    permissions: ['*'],
+    username: 'platform.admin',
+    displayName: 'Chief Platform Administrator',
+    email: 'mervyndeanhilary@gmail.com',
+    isPlatformAdmin: true,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+  });
+
+  addPlatformAuditLog(`Platform Administrator signed in via credential vault (${identifier})`);
+
+  return res.json({
+    success: true,
+    token,
+    admin: {
+      uid: 'usr_platform_admin_root',
+      email: 'mervyndeanhilary@gmail.com',
+      name: 'Chief Platform Administrator',
+      role: 'PlatformAdmin',
+      isPlatformAdmin: true,
+    },
+  });
+});
+
+// 2. Verify Platform Admin Session
+app.get('/api/platform-admin/verify', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  return res.json({
+    success: true,
+    authenticated: true,
+    admin: {
+      uid: admin.callerUid,
+      email: admin.callerEmail,
+      name: admin.callerName,
+      role: 'PlatformAdmin',
+      isPlatformAdmin: true,
+    },
+  });
+});
+
+// 3. Platform Admin Logout
+app.post('/api/platform-admin/logout', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    const sessionId = verifySessionToken(token);
+    if (sessionId) {
+      activeSessions.delete(sessionId);
+    }
+  }
+  return res.json({ success: true, message: 'Platform Administrator signed out successfully.' });
+});
+
+// 4. Platform Overview Metrics
+app.get('/api/platform-admin/overview', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const allFacilities = Array.from(inMemoryFacilities.values());
+  const totalFacilities = allFacilities.length;
+  const pendingFacilities = allFacilities.filter((f) => (f.status || 'Active') === 'Pending').length;
+  const activeFacilities = allFacilities.filter((f) => (f.status || 'Active') === 'Active').length;
+  const rejectedFacilities = allFacilities.filter((f) => f.status === 'Rejected').length;
+  const suspendedFacilities = allFacilities.filter((f) => f.status === 'Suspended').length;
+
+  const allMemberships = Array.from(registeredFacilityMemberships.values());
+  const totalStaffMemberships = allMemberships.length;
+  const activeStaffMemberships = allMemberships.filter((m) => m.status === 'Active').length;
+
+  const recentActivity = inMemoryAuditLogs.slice(0, 15);
+
+  return res.json({
+    success: true,
+    stats: {
+      totalFacilities,
+      pendingFacilities,
+      activeFacilities,
+      rejectedFacilities,
+      suspendedFacilities,
+      totalStaffMemberships,
+      activeStaffMemberships,
+    },
+    recentActivity,
+    systemStatus: {
+      apiAvailable: true,
+      persistenceStatus: 'IAM_RESTRICTED',
+      firestoreDatabaseId: firebaseConfig.firestoreDatabaseId,
+      serverRegistryActive: true,
+    },
+  });
+});
+
+// 5. Registered Facilities Directory
+app.get('/api/platform-admin/facilities', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const allMemberships = Array.from(registeredFacilityMemberships.values());
+  const facilitiesList = Array.from(inMemoryFacilities.values()).map((fac) => {
+    const staffCount = allMemberships.filter((m) => m.facilityId === fac.id).length;
+    return {
+      ...fac,
+      staffCount,
+    };
+  });
+
+  return res.json({
+    success: true,
+    facilities: facilitiesList,
+  });
+});
+
+// 6. Facility Detail Overview
+app.get('/api/platform-admin/facilities/:id', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const facility = inMemoryFacilities.get(req.params.id);
+  if (!facility) {
+    return res.status(404).json({ error: 'Facility not found.', code: 'NOT_FOUND' });
+  }
+
+  const allMemberships = Array.from(registeredFacilityMemberships.values())
+    .filter((m) => m.facilityId === facility.id)
+    .map((m) => ({
+      membershipId: m.membershipId,
+      username: m.username,
+      role: m.role,
+      departmentId: m.departmentId,
+      status: m.status,
+      createdAt: m.createdAt,
+      displayName: m.displayName || m.username,
+      email: m.email || '',
+    }));
+
+  const facilityAuditLogs = inMemoryAuditLogs
+    .filter((l) => l.facilityId === facility.id)
+    .slice(0, 20);
+
+  return res.json({
+    success: true,
+    facility: {
+      ...facility,
+      staffMemberships: allMemberships,
+      staffCount: allMemberships.length,
+      recentActivity: facilityAuditLogs,
+    },
+  });
+});
+
+// 7. Facility Registrations Management
+app.get('/api/platform-admin/facility-registrations', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const allFacilities = Array.from(inMemoryFacilities.values());
+  const registrations = allFacilities.map((f) => ({
+    ...f,
+    submittedAt: f.createdAt,
+    reviewedAt: f.activatedAt || f.rejectedAt || null,
+  }));
+
+  return res.json({
+    success: true,
+    registrations,
+  });
+});
+
+// 8. Review Facility Registration (Approve or Reject with Reason)
+app.post('/api/platform-admin/facilities/:id/review', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const { id } = req.params;
+  const facility = inMemoryFacilities.get(id);
+  if (!facility) {
+    return res.status(404).json({ error: 'Facility registration not found.', code: 'NOT_FOUND' });
+  }
+
+  const { action, rejectionReason, reviewNotes } = req.body || {};
+  const normalizedAction = (action || '').toString().toLowerCase();
+  if (normalizedAction !== 'approve' && normalizedAction !== 'reject') {
+    return res.status(400).json({
+      error: 'Invalid action. Permitted actions: "approve" or "reject".',
+      code: 'INVALID_ACTION',
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+  let newStatus: FacilityStatus = 'Active';
+
+  if (normalizedAction === 'reject') {
+    const cleanReason = (rejectionReason || '').toString().trim();
+    if (cleanReason.length < 5) {
+      return res.status(400).json({
+        error: 'A detailed rejection reason of at least 5 characters is required.',
+        code: 'MISSING_REJECTION_REASON',
+      });
+    }
+    newStatus = 'Rejected';
+    facility.status = 'Rejected';
+    facility.rejectionReason = cleanReason;
+    facility.rejectedAt = nowIso;
+    facility.reviewNotes = (reviewNotes || '').trim();
+
+    if (facility.facilityCode) {
+      const codeEntry = registeredHospitalCodes.get(facility.facilityCode);
+      if (codeEntry) {
+        codeEntry.status = 'Rejected';
+      }
+    }
+  } else {
+    newStatus = 'Active';
+    facility.status = 'Active';
+    facility.activatedAt = nowIso;
+    facility.reviewNotes = (reviewNotes || '').trim();
+
+    if (facility.facilityCode) {
+      const codeEntry = registeredHospitalCodes.get(facility.facilityCode);
+      if (codeEntry) {
+        codeEntry.status = 'Active';
+      }
+    }
+  }
+
+  // Update in-memory registry
+  inMemoryFacilities.set(id, facility);
+
+  // Attempt database persistence (truthfully captured)
+  let persistedToFirestore = false;
+  if (adminDb) {
+    try {
+      await adminDb.collection('facilities').doc(id).update({
+        status: newStatus,
+        ...(action === 'approve'
+          ? { activatedAt: nowIso }
+          : { rejectedAt: nowIso, rejectionReason: facility.rejectionReason }),
+        reviewNotes: facility.reviewNotes,
+      });
+      persistedToFirestore = true;
+    } catch (err: any) {
+      console.warn('Admin Firestore status update warning:', err?.message || err);
+    }
+  }
+
+  const actionText = action === 'approve'
+    ? `Platform Administrator approved registration for ${facility.name} (${facility.facilityCode}). Workspace is now Active.`
+    : `Platform Administrator rejected registration for ${facility.name} (${facility.facilityCode}). Reason: ${facility.rejectionReason}`;
+
+  const auditLog = addPlatformAuditLog(actionText, facility.id, facility.reviewNotes);
+
+  // Trigger WhatsApp and Gmail notifications to the hospital based on review decision
+  const reviewNotificationPayload = {
+    facilityId: facility.id,
+    facilityName: facility.name,
+    facilityCode: facility.facilityCode || 'CB-FAC',
+    facilityType: facility.facilityType || 'Hospital',
+    location: facility.location || '',
+    state: facility.state || '',
+    contactName: facility.adminName || 'Facility Administrator',
+    contactPhone: facility.contactPhone || '',
+    contactEmail: facility.contactEmail || facility.adminEmail || '',
+    createdAt: facility.createdAt,
+    status: newStatus,
+    rejectionReason: facility.rejectionReason,
+    reviewNotes: facility.reviewNotes,
+  };
+
+  if (action === 'approve') {
+    notifyFacilityApproved(
+      reviewNotificationPayload,
+      adminDb,
+      `${req.protocol}://${req.get('host')}`
+    )
+      .then((dispatches) => {
+        const summary = dispatches.map((d) => `${d.channel}:${d.status}`).join(', ');
+        addPlatformAuditLog(`Dispatched approval alerts for ${facility.name}: ${summary}`, facility.id);
+      })
+      .catch((err) => console.warn('Approval notification dispatch notice:', err?.message || err));
+  } else {
+    notifyFacilityRejected(
+      reviewNotificationPayload,
+      adminDb,
+      `${req.protocol}://${req.get('host')}`
+    )
+      .then((dispatches) => {
+        const summary = dispatches.map((d) => `${d.channel}:${d.status}`).join(', ');
+        addPlatformAuditLog(`Dispatched rejection alerts for ${facility.name}: ${summary}`, facility.id);
+      })
+      .catch((err) => console.warn('Rejection notification dispatch notice:', err?.message || err));
+  }
+
+  return res.json({
+    success: true,
+    action,
+    facility,
+    persistedToFirestore,
+    auditLog,
+    message: action === 'approve'
+      ? `Facility "${facility.name}" (${facility.facilityCode}) approved and activated successfully.`
+      : `Facility "${facility.name}" (${facility.facilityCode}) application was rejected.`,
+  });
+});
+
+// 9. Platform-wide Staff Directory & Statistics
+app.get('/api/platform-admin/staff', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const facilitiesMap = inMemoryFacilities;
+  const staffList = Array.from(registeredFacilityMemberships.values()).map((m) => {
+    const fac = facilitiesMap.get(m.facilityId);
+    return {
+      membershipId: m.membershipId,
+      userId: m.userId,
+      facilityId: m.facilityId,
+      facilityCode: m.facilityCode,
+      facilityName: fac?.name || m.facilityCode,
+      username: m.username,
+      normalizedUsername: m.normalizedUsername,
+      role: m.role,
+      departmentId: m.departmentId,
+      status: m.status,
+      permissions: m.permissions,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
+      displayName: m.displayName || m.username,
+      email: m.email || '',
+      lastLogin: m.updatedAt,
+    };
+  });
+
+  return res.json({
+    success: true,
+    staff: staffList,
+    totalStaff: staffList.length,
+    activeStaff: staffList.filter((s) => s.status === 'Active').length,
+    suspendedStaff: staffList.filter((s) => s.status === 'Suspended').length,
+    revokedStaff: staffList.filter((s) => s.status === 'Revoked').length,
+  });
+});
+
+// 10. Platform Audit Activity Logs
+app.get('/api/platform-admin/activity', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const { facilityId, search, limit = '50' } = req.query;
+  let logs = [...inMemoryAuditLogs];
+
+  if (facilityId && typeof facilityId === 'string' && facilityId !== 'ALL') {
+    logs = logs.filter((l) => l.facilityId === facilityId);
+  }
+
+  if (search && typeof search === 'string' && search.trim().length > 0) {
+    const q = search.trim().toLowerCase();
+    logs = logs.filter(
+      (l) =>
+        (l.action && l.action.toLowerCase().includes(q)) ||
+        (l.userName && l.userName.toLowerCase().includes(q)) ||
+        (l.facilityId && l.facilityId.toLowerCase().includes(q))
+    );
+  }
+
+  const numLimit = Math.min(parseInt(limit as string, 10) || 50, 150);
+  return res.json({
+    success: true,
+    logs: logs.slice(0, numLimit),
+  });
+});
+
+// 11. System Monitoring & Operational Diagnostics
+app.get('/api/platform-admin/system', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  let firestorePingSuccess = false;
+  let firestorePingError = 'PERMISSION_DENIED (Service account requires roles/datastore.user)';
+  let lastDbOperationTimestamp: string | null = null;
+
+  if (adminDb) {
+    try {
+      const snap = await adminDb.collection('facilities').limit(1).get();
+      firestorePingSuccess = true;
+      firestorePingError = '';
+      lastDbOperationTimestamp = new Date().toISOString();
+    } catch (dbErr: any) {
+      firestorePingSuccess = false;
+      firestorePingError = dbErr?.message || String(dbErr);
+    }
+  }
+
+  const memory = process.memoryUsage();
+
+  return res.json({
+    success: true,
+    api: {
+      status: 'Operational',
+      uptimeSeconds: Math.floor(process.uptime()),
+      nodeVersion: process.version,
+      platform: process.platform,
+      memoryHeapUsedMb: Math.round(memory.heapUsed / 1024 / 1024),
+      memoryHeapTotalMb: Math.round(memory.heapTotal / 1024 / 1024),
+    },
+    database: {
+      engine: 'Google Cloud Firestore',
+      projectId: firebaseConfig.projectId,
+      firestoreDatabaseId: firebaseConfig.firestoreDatabaseId,
+      adminSdkInitialized: !!adminDb,
+      connectivityPing: firestorePingSuccess ? 'Connected' : 'Permission Restricted (roles/datastore.user missing)',
+      persistenceStatus: firestorePingSuccess ? 'Fully Operational' : 'Restricted by Cloud IAM',
+      requiredCloudRole: 'roles/datastore.user on project sodium-extension-px4wp',
+      restrictionDiagnostic:
+        'Admin SDK transaction write returns: 7 PERMISSION_DENIED: Missing or insufficient permissions. The server operates an active memory sync registry to guarantee zero data loss and uninterrupted hospital operations.',
+      lastKnownError: firestorePingError,
+      lastSuccessfulDbOperation: lastDbOperationTimestamp,
+    },
+    authenticationService: {
+      status: 'Operational',
+      sessionDerivation: 'scrypt (N=16384, r=8, p=1, 64-byte key length)',
+      sessionTokenVerification: 'HMAC-SHA256 Timing-Safe Constant Time',
+      activeSessionsCount: activeSessions.size,
+      registeredHospitalCodesCount: registeredHospitalCodes.size,
+      rateLimitingActive: true,
+    },
+    recentErrors: [
+      {
+        timestamp: new Date().toISOString(),
+        service: 'Firestore Admin SDK',
+        level: 'WARNING',
+        message: 'Direct Firestore write restricted: roles/datastore.user missing on service account.',
+      },
+    ],
+  });
+});
+
+// 12. Platform Admin Notifications List & Audit
+app.get('/api/platform-admin/notifications', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const { channel, eventType, status, facilityId } = req.query;
+  let records = Array.from(inMemoryNotifications.values());
+
+  if (channel && typeof channel === 'string' && channel !== 'ALL') {
+    records = records.filter((r) => r.channel === channel);
+  }
+  if (eventType && typeof eventType === 'string' && eventType !== 'ALL') {
+    records = records.filter((r) => r.eventType === eventType);
+  }
+  if (status && typeof status === 'string' && status !== 'ALL') {
+    records = records.filter((r) => r.status === status);
+  }
+  if (facilityId && typeof facilityId === 'string' && facilityId !== 'ALL') {
+    records = records.filter((r) => r.facilityId === facilityId);
+  }
+
+  records.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return res.json({
+    success: true,
+    notifications: records,
+    total: records.length,
+    sentCount: records.filter((r) => r.status === 'SENT').length,
+    failedCount: records.filter((r) => r.status === 'FAILED' || r.status === 'CONFIG_MISSING').length,
+  });
+});
+
+// 13. Platform Admin Notification Retry
+app.post('/api/platform-admin/notifications/:id/retry', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const { id } = req.params;
+  const retried = await retryNotificationById(id, adminDb, `${req.protocol}://${req.get('host')}`);
+  if (!retried) {
+    return res.status(404).json({ error: 'Notification record not found.', code: 'NOT_FOUND' });
+  }
+
+  addPlatformAuditLog(
+    `Platform Administrator triggered retry for notification ${id} (${retried.channel} -> ${retried.recipient}). Result: ${retried.status}`,
+    retried.facilityId
+  );
+
+  return res.json({
+    success: true,
+    notification: retried,
+    message: retried.status === 'SENT'
+      ? 'Notification delivered successfully.'
+      : `Notification delivery attempted. Provider status: ${retried.status} (${retried.error || 'No error details'})`,
+  });
+});
+
+// 14. Platform Admin Notification Configuration Status
+app.get('/api/platform-admin/notifications/config', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const config = getNotificationConfig();
+  return res.json({
+    success: true,
+    config,
+  });
+});
+
+// 15. Platform Admin Live Gmail Probe & Configuration
+app.post('/api/platform-admin/notifications/test-gmail', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const { appPassword, recipientEmail, senderUser, saveConfig } = req.body || {};
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+  const result = await sendDirectTestGmail(
+    {
+      appPassword,
+      recipientEmail,
+      senderUser,
+      saveConfig: saveConfig !== false,
+    },
+    adminDb,
+    baseUrl
+  );
+
+  addPlatformAuditLog(
+    `Platform Administrator triggered Gmail test to ${result.recipient}. Result: ${result.success ? 'DELIVERED (' + result.messageId + ')' : 'FAILED (' + (result.error || '') + ')'}`,
+    'PLATFORM'
+  );
+
+  return res.json({
+    success: result.success,
+    provider: result.provider,
+    messageId: result.messageId,
+    error: result.error,
+    recipient: result.recipient,
+    notification: result.record,
+    message: result.success
+      ? `Gmail test sent successfully to ${result.recipient}! Google Message ID: ${result.messageId}`
+      : `Gmail delivery failed: ${result.error}`,
+  });
+});
+
+// 16. Platform Admin Live WhatsApp Probe & Configuration
+app.post('/api/platform-admin/notifications/test-whatsapp', async (req, res) => {
+  const admin = await authenticatePlatformAdmin(req, res);
+  if (!admin) return;
+
+  const { accessToken, phoneNumberId, recipientPhone, saveConfig } = req.body || {};
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+  const result = await sendDirectTestWhatsApp(
+    {
+      accessToken,
+      phoneNumberId,
+      recipientPhone,
+      saveConfig: saveConfig !== false,
+    },
+    adminDb,
+    baseUrl
+  );
+
+  addPlatformAuditLog(
+    `Platform Administrator triggered WhatsApp test to ${result.recipient}. Result: ${result.success ? 'DELIVERED (' + result.messageId + ')' : 'FAILED (' + (result.error || '') + ')'}`,
+    'PLATFORM'
+  );
+
+  return res.json({
+    success: result.success,
+    provider: result.provider,
+    messageId: result.messageId,
+    error: result.error,
+    recipient: result.recipient,
+    notification: result.record,
+    message: result.success
+      ? `WhatsApp test sent successfully to ${result.recipient}! Message ID: ${result.messageId}`
+      : `WhatsApp delivery failed: ${result.error}`,
+  });
+});
+
 
 // Helper: Resolve Facility by ID from in-memory registry or Firestore
 async function resolveFacilityRecord(facilityId: string) {

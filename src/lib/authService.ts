@@ -22,6 +22,7 @@ export interface AuthSession {
   username: string;
   displayName: string;
   email: string;
+  isPlatformAdmin?: boolean;
   createdAt: number;
   expiresAt: number;
 }

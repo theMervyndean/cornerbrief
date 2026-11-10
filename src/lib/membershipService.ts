@@ -1,9 +1,9 @@
-import {
+import type {
   FacilityMembership,
   MembershipStatus,
   UserProfile,
   UserRole,
-} from '../types';
+} from '../types.ts';
 
 /**
  * Standardized Role-to-Permissions Mapping for CornerBrief Multi-Facility RBAC

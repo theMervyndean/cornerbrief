@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { UserRole } from '../types';
+import type { UserRole } from '../types.ts';
 
 export interface FacilityCredential {
   membershipId: string;
